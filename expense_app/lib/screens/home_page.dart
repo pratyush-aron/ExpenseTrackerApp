@@ -1,6 +1,10 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 import 'dart:ui';
 import 'dart:math' as math;
+import '../providers/expense_provider.dart';
+import '../models/expense.dart';
+import '../services/api_service.dart';
 
 class HomePage extends StatefulWidget {
   const HomePage({super.key});
@@ -16,89 +20,6 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
   late Animation<double> _cardAnimation;
   late Animation<double> _balanceAnimation;
   late Animation<double> _listAnimation;
-
-  final List<Map<String, dynamic>> _transactions = [
-    {
-      'title': 'Groceries',
-      'amount': -85.50,
-      'category': 'Food',
-      'icon': Icons.local_grocery_store_rounded,
-      'color': const Color(0xFF10B981),
-      'time': '2h ago',
-    },
-    {
-      'title': 'Salary',
-      'amount': 3200.00,
-      'category': 'Income',
-      'icon': Icons.account_balance_wallet_rounded,
-      'color': const Color(0xFF60A5FA),
-      'time': '1 day ago',
-    },
-    {
-      'title': 'Coffee',
-      'amount': -12.50,
-      'category': 'Food',
-      'icon': Icons.local_cafe_rounded,
-      'color': const Color(0xFFF59E0B),
-      'time': '3h ago',
-    },
-    {
-      'title': 'Netflix',
-      'amount': -15.99,
-      'category': 'Entertainment',
-      'icon': Icons.movie_rounded,
-      'color': const Color(0xFFEF4444),
-      'time': '1 week ago',
-    },
-    {
-      'title': 'Uber',
-      'amount': -23.45,
-      'category': 'Transport',
-      'icon': Icons.directions_car_rounded,
-      'color': const Color(0xFF8B5CF6),
-      'time': '2 days ago',
-    },
-    {
-      'title': 'Investment',
-      'amount': 500.00,
-      'category': 'Income',
-      'icon': Icons.trending_up_rounded,
-      'color': const Color(0xFF34D399),
-      'time': '3 days ago',
-    },
-    {
-      'title': 'Gym Membership',
-      'amount': -49.99,
-      'category': 'Health',
-      'icon': Icons.fitness_center_rounded,
-      'color': const Color(0xFFF472B6),
-      'time': '1 week ago',
-    },
-    {
-      'title': 'Restaurant',
-      'amount': -67.80,
-      'category': 'Food',
-      'icon': Icons.restaurant_rounded,
-      'color': const Color(0xFF06B6D4),
-      'time': '4 days ago',
-    },
-    {
-      'title': 'Gas Station',
-      'amount': -45.20,
-      'category': 'Transport',
-      'icon': Icons.local_gas_station_rounded,
-      'color': const Color(0xFF8B5CF6),
-      'time': '5 days ago',
-    },
-    {
-      'title': 'Freelance Work',
-      'amount': 800.00,
-      'category': 'Income',
-      'icon': Icons.work_rounded,
-      'color': const Color(0xFF34D399),
-      'time': '6 days ago',
-    },
-  ];
 
   @override
   void initState() {
@@ -138,6 +59,22 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
     );
 
     _startAnimations();
+
+    // Test API connection and load expenses
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      print('🔍 Testing API connection...');
+      final isConnected = await ApiService.testConnection();
+      print('🔗 Connection result: $isConnected');
+
+      if (isConnected) {
+        print('✅ Connection successful, loading expenses...');
+        if (mounted) {
+          Provider.of<ExpenseProvider>(context, listen: false).loadExpenses();
+        }
+      } else {
+        print('❌ Connection failed - check your IP address and server');
+      }
+    });
   }
 
   void _startAnimations() async {
@@ -155,6 +92,44 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
     _balanceAnimationController.dispose();
     _listAnimationController.dispose();
     super.dispose();
+  }
+
+  IconData _getCategoryIcon(String category) {
+    switch (category.toLowerCase()) {
+      case 'food':
+        return Icons.restaurant_rounded;
+      case 'transport':
+        return Icons.directions_car_rounded;
+      case 'shopping':
+        return Icons.shopping_bag_rounded;
+      case 'entertainment':
+        return Icons.movie_rounded;
+      case 'health':
+        return Icons.local_hospital_rounded;
+      case 'education':
+        return Icons.school_rounded;
+      default:
+        return Icons.category_rounded;
+    }
+  }
+
+  Color _getCategoryColor(String category) {
+    switch (category.toLowerCase()) {
+      case 'food':
+        return const Color(0xFF10B981);
+      case 'transport':
+        return const Color(0xFF3B82F6);
+      case 'shopping':
+        return const Color(0xFFEF4444);
+      case 'entertainment':
+        return const Color(0xFFF59E0B);
+      case 'health':
+        return const Color(0xFF8B5CF6);
+      case 'education':
+        return const Color(0xFF06B6D4);
+      default:
+        return const Color(0xFF6B7280);
+    }
   }
 
   @override
@@ -186,7 +161,6 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
                 const SizedBox(height: 20),
                 _buildCompactOverview(),
                 const SizedBox(height: 20),
-                // Make transactions list take up most of the screen
                 Expanded(flex: 5, child: _buildTransactionList()),
               ],
             ),
@@ -247,169 +221,177 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
   }
 
   Widget _buildCompactOverview() {
-    const double totalBudget = 4000.0;
-    const double spentAmount = 2847.50;
-    const double remainingAmount = totalBudget - spentAmount;
-    final double progressPercentage = spentAmount / totalBudget;
+    return Consumer<ExpenseProvider>(
+      builder: (context, expenseProvider, child) {
+        const double totalBudget = 4000.0;
+        final double spentAmount = expenseProvider.totalBalance;
+        final double remainingAmount = totalBudget - spentAmount;
+        final double progressPercentage = spentAmount / totalBudget;
 
-    return AnimatedBuilder(
-      animation: _cardAnimation,
-      builder: (context, child) {
-        return Transform.scale(
-          scale: 0.8 + (_cardAnimation.value * 0.2),
-          child: Opacity(
-            opacity: _cardAnimation.value.clamp(0.0, 1.0),
-            child: Column(
-              children: [
-                // Monthly Budget Remaining Card
-                _buildGlassContainer(
-                  child: Padding(
-                    padding: const EdgeInsets.all(20),
-                    child: Column(
-                      children: [
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        return AnimatedBuilder(
+          animation: _cardAnimation,
+          builder: (context, child) {
+            return Transform.scale(
+              scale: 0.8 + (_cardAnimation.value * 0.2),
+              child: Opacity(
+                opacity: _cardAnimation.value.clamp(0.0, 1.0),
+                child: Column(
+                  children: [
+                    // Monthly Budget Remaining Card
+                    _buildGlassContainer(
+                      child: Padding(
+                        padding: const EdgeInsets.all(20),
+                        child: Column(
                           children: [
-                            Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
+                            Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
                               children: [
-                                Text(
-                                  'Monthly Budget Left',
-                                  style: TextStyle(
-                                    color: Colors.white.withOpacity(0.7),
-                                    fontSize: 14,
-                                    fontWeight: FontWeight.w500,
-                                  ),
+                                Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      'Monthly Budget Left',
+                                      style: TextStyle(
+                                        color: Colors.white.withOpacity(0.7),
+                                        fontSize: 14,
+                                        fontWeight: FontWeight.w500,
+                                      ),
+                                    ),
+                                    const SizedBox(height: 8),
+                                    Text(
+                                      '\$${remainingAmount.toStringAsFixed(2)}',
+                                      style: TextStyle(
+                                        color: remainingAmount >= 0
+                                            ? const Color(0xFF34D399)
+                                            : const Color(0xFFEF4444),
+                                        fontSize: 28,
+                                        fontWeight: FontWeight.w700,
+                                      ),
+                                    ),
+                                  ],
                                 ),
-                                const SizedBox(height: 8),
-                                Text(
-                                  '\$${remainingAmount.toStringAsFixed(2)}',
-                                  style: const TextStyle(
+                                Container(
+                                  padding: const EdgeInsets.all(12),
+                                  decoration: BoxDecoration(
+                                    color: const Color(
+                                      0xFF34D399,
+                                    ).withOpacity(0.2),
+                                    borderRadius: BorderRadius.circular(12),
+                                  ),
+                                  child: const Icon(
+                                    Icons.account_balance_wallet_rounded,
                                     color: Color(0xFF34D399),
-                                    fontSize: 28,
-                                    fontWeight: FontWeight.w700,
+                                    size: 24,
                                   ),
                                 ),
                               ],
                             ),
-                            Container(
-                              padding: const EdgeInsets.all(12),
-                              decoration: BoxDecoration(
-                                color: const Color(0xFF34D399).withOpacity(0.2),
-                                borderRadius: BorderRadius.circular(12),
-                              ),
-                              child: const Icon(
-                                Icons.account_balance_wallet_rounded,
-                                color: Color(0xFF34D399),
-                                size: 24,
-                              ),
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 15),
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: [
-                            Text(
-                              'Spent: \$${spentAmount.toStringAsFixed(2)}',
-                              style: TextStyle(
-                                color: Colors.white.withOpacity(0.8),
-                                fontSize: 12,
-                                fontWeight: FontWeight.w500,
-                              ),
-                            ),
-                            Text(
-                              'of \$${totalBudget.toStringAsFixed(2)}',
-                              style: TextStyle(
-                                color: Colors.white.withOpacity(0.8),
-                                fontSize: 12,
-                                fontWeight: FontWeight.w500,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 15),
-                // Progress Bar Card
-                _buildGlassContainer(
-                  child: Padding(
-                    padding: const EdgeInsets.all(20),
-                    child: Column(
-                      children: [
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: [
-                            Text(
-                              'Spending Progress',
-                              style: TextStyle(
-                                color: Colors.white.withOpacity(0.9),
-                                fontSize: 16,
-                                fontWeight: FontWeight.w600,
-                              ),
-                            ),
-                            Text(
-                              '${(progressPercentage * 100).toStringAsFixed(1)}%',
-                              style: TextStyle(
-                                color: Colors.white.withOpacity(0.8),
-                                fontSize: 14,
-                                fontWeight: FontWeight.w600,
-                              ),
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 12),
-                        Container(
-                          width: double.infinity,
-                          height: 8,
-                          decoration: BoxDecoration(
-                            color: Colors.white.withOpacity(0.1),
-                            borderRadius: BorderRadius.circular(4),
-                          ),
-                          child: FractionallySizedBox(
-                            alignment: Alignment.centerLeft,
-                            widthFactor: progressPercentage,
-                            child: Container(
-                              decoration: BoxDecoration(
-                                gradient: LinearGradient(
-                                  colors: progressPercentage > 0.8
-                                      ? [
-                                          const Color(0xFFF87171),
-                                          const Color(0xFFEF4444),
-                                        ]
-                                      : progressPercentage > 0.6
-                                      ? [
-                                          const Color(0xFFFBBF24),
-                                          const Color(0xFFF59E0B),
-                                        ]
-                                      : [
-                                          const Color(0xFF34D399),
-                                          const Color(0xFF10B981),
-                                        ],
+                            const SizedBox(height: 15),
+                            Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                              children: [
+                                Text(
+                                  'Spent: \$${spentAmount.toStringAsFixed(2)}',
+                                  style: TextStyle(
+                                    color: Colors.white.withOpacity(0.8),
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.w500,
+                                  ),
                                 ),
+                                Text(
+                                  'of \$${totalBudget.toStringAsFixed(2)}',
+                                  style: TextStyle(
+                                    color: Colors.white.withOpacity(0.8),
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.w500,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 15),
+                    // Progress Bar Card
+                    _buildGlassContainer(
+                      child: Padding(
+                        padding: const EdgeInsets.all(20),
+                        child: Column(
+                          children: [
+                            Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                              children: [
+                                Text(
+                                  'Spending Progress',
+                                  style: TextStyle(
+                                    color: Colors.white.withOpacity(0.9),
+                                    fontSize: 16,
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                ),
+                                Text(
+                                  '${(progressPercentage * 100).toStringAsFixed(1)}%',
+                                  style: TextStyle(
+                                    color: Colors.white.withOpacity(0.8),
+                                    fontSize: 14,
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 12),
+                            Container(
+                              width: double.infinity,
+                              height: 8,
+                              decoration: BoxDecoration(
+                                color: Colors.white.withOpacity(0.1),
                                 borderRadius: BorderRadius.circular(4),
                               ),
+                              child: FractionallySizedBox(
+                                alignment: Alignment.centerLeft,
+                                widthFactor: progressPercentage.clamp(0.0, 1.0),
+                                child: Container(
+                                  decoration: BoxDecoration(
+                                    gradient: LinearGradient(
+                                      colors: progressPercentage > 0.8
+                                          ? [
+                                              const Color(0xFFF87171),
+                                              const Color(0xFFEF4444),
+                                            ]
+                                          : progressPercentage > 0.6
+                                          ? [
+                                              const Color(0xFFFBBF24),
+                                              const Color(0xFFF59E0B),
+                                            ]
+                                          : [
+                                              const Color(0xFF34D399),
+                                              const Color(0xFF10B981),
+                                            ],
+                                    ),
+                                    borderRadius: BorderRadius.circular(4),
+                                  ),
+                                ),
+                              ),
                             ),
-                          ),
+                            const SizedBox(height: 8),
+                            Text(
+                              '15 days left this month',
+                              style: TextStyle(
+                                color: Colors.white.withOpacity(0.6),
+                                fontSize: 12,
+                                fontWeight: FontWeight.w400,
+                              ),
+                            ),
+                          ],
                         ),
-                        const SizedBox(height: 8),
-                        Text(
-                          '15 days left this month',
-                          style: TextStyle(
-                            color: Colors.white.withOpacity(0.6),
-                            fontSize: 12,
-                            fontWeight: FontWeight.w400,
-                          ),
-                        ),
-                      ],
+                      ),
                     ),
-                  ),
+                  ],
                 ),
-              ],
-            ),
-          ),
+              ),
+            );
+          },
         );
       },
     );
@@ -431,9 +413,14 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
               ),
             ),
             TextButton(
-              onPressed: () {},
+              onPressed: () {
+                Provider.of<ExpenseProvider>(
+                  context,
+                  listen: false,
+                ).refreshExpenses();
+              },
               child: Text(
-                'View All',
+                'Refresh',
                 style: TextStyle(
                   color: Colors.white.withOpacity(0.7),
                   fontSize: 14,
@@ -444,68 +431,85 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
         ),
         const SizedBox(height: 15),
         Expanded(
-          child: AnimatedBuilder(
-            animation: _listAnimation,
-            builder: (context, child) {
-              return Container(
-                decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(20),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black.withOpacity(0.1),
-                      blurRadius: 20,
-                      offset: const Offset(0, 10),
+          child: Consumer<ExpenseProvider>(
+            builder: (context, expenseProvider, child) {
+              if (expenseProvider.isLoading) {
+                return _buildLoadingState();
+              }
+
+              if (expenseProvider.errorMessage != null) {
+                return _buildErrorState(expenseProvider.errorMessage!);
+              }
+
+              if (expenseProvider.expenses.isEmpty) {
+                return _buildEmptyState();
+              }
+
+              return AnimatedBuilder(
+                animation: _listAnimation,
+                builder: (context, child) {
+                  return Container(
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(20),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withOpacity(0.1),
+                          blurRadius: 20,
+                          offset: const Offset(0, 10),
+                        ),
+                      ],
                     ),
-                  ],
-                ),
-                child: ClipRRect(
-                  borderRadius: BorderRadius.circular(20),
-                  child: BackdropFilter(
-                    filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
-                    child: Container(
-                      padding: const EdgeInsets.all(5),
-                      decoration: BoxDecoration(
-                        color: Colors.white.withOpacity(0.05),
-                        borderRadius: BorderRadius.circular(20),
-                        border: Border.all(
-                          color: Colors.white.withOpacity(0.1),
-                          width: 1.5,
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(20),
+                      child: BackdropFilter(
+                        filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
+                        child: Container(
+                          padding: const EdgeInsets.all(5),
+                          decoration: BoxDecoration(
+                            color: Colors.white.withOpacity(0.05),
+                            borderRadius: BorderRadius.circular(20),
+                            border: Border.all(
+                              color: Colors.white.withOpacity(0.1),
+                              width: 1.5,
+                            ),
+                          ),
+                          child: ListView.builder(
+                            padding: const EdgeInsets.symmetric(vertical: 10),
+                            physics: const BouncingScrollPhysics(),
+                            itemCount: expenseProvider.expenses.length,
+                            itemBuilder: (context, index) {
+                              final delay = index * 0.1;
+                              final animationValue = math.max(
+                                0.0,
+                                math.min(
+                                  1.0,
+                                  (_listAnimation.value - delay) /
+                                      (1.0 - delay),
+                                ),
+                              );
+
+                              return Transform.translate(
+                                offset: Offset(0, 50 * (1 - animationValue)),
+                                child: Opacity(
+                                  opacity: animationValue.clamp(0.0, 1.0),
+                                  child: Padding(
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 15,
+                                      vertical: 5,
+                                    ),
+                                    child: _buildTransactionItem(
+                                      expenseProvider.expenses[index],
+                                    ),
+                                  ),
+                                ),
+                              );
+                            },
+                          ),
                         ),
                       ),
-                      child: ListView.builder(
-                        padding: const EdgeInsets.symmetric(vertical: 10),
-                        physics: const BouncingScrollPhysics(),
-                        itemCount: _transactions.length,
-                        itemBuilder: (context, index) {
-                          final delay = index * 0.1;
-                          final animationValue = math.max(
-                            0.0,
-                            math.min(
-                              1.0,
-                              (_listAnimation.value - delay) / (1.0 - delay),
-                            ),
-                          );
-
-                          return Transform.translate(
-                            offset: Offset(0, 50 * (1 - animationValue)),
-                            child: Opacity(
-                              opacity: animationValue.clamp(0.0, 1.0),
-                              child: Padding(
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 15,
-                                  vertical: 5,
-                                ),
-                                child: _buildTransactionItem(
-                                  _transactions[index],
-                                ),
-                              ),
-                            ),
-                          );
-                        },
-                      ),
                     ),
-                  ),
-                ),
+                  );
+                },
               );
             },
           ),
@@ -514,76 +518,230 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
     );
   }
 
-  Widget _buildTransactionItem(Map<String, dynamic> transaction) {
-    return Container(
-      margin: const EdgeInsets.only(bottom: 10),
-      padding: const EdgeInsets.all(15),
-      decoration: BoxDecoration(
-        color: Colors.white.withOpacity(0.05),
-        borderRadius: BorderRadius.circular(15),
-        border: Border.all(color: Colors.white.withOpacity(0.1), width: 1),
-      ),
-      child: Row(
-        children: [
-          Container(
-            width: 45,
-            height: 45,
-            decoration: BoxDecoration(
-              color: transaction['color'].withOpacity(0.2),
-              borderRadius: BorderRadius.circular(12),
+  Widget _buildTransactionItem(Expense expense) {
+    final categoryIcon = _getCategoryIcon(expense.category);
+    final categoryColor = _getCategoryColor(expense.category);
+
+    return Dismissible(
+      key: Key(expense.id ?? expense.hashCode.toString()),
+      direction: DismissDirection.endToStart,
+      confirmDismiss: (direction) async {
+        return await showDialog<bool>(
+          context: context,
+          builder: (context) => AlertDialog(
+            title: const Text('Delete Expense'),
+            content: const Text(
+              'Are you sure you want to delete this expense?',
             ),
-            child: Icon(
-              transaction['icon'],
-              color: transaction['color'],
-              size: 22,
-            ),
-          ),
-          const SizedBox(width: 15),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  transaction['title'],
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 16,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  '${transaction['category']} • ${transaction['time']}',
-                  style: TextStyle(
-                    color: Colors.white.withOpacity(0.6),
-                    fontSize: 13,
-                  ),
-                ),
-              ],
-            ),
-          ),
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-            decoration: BoxDecoration(
-              color: transaction['amount'] > 0
-                  ? const Color(0xFF34D399).withOpacity(0.2)
-                  : const Color(0xFFEF4444).withOpacity(0.2),
-              borderRadius: BorderRadius.circular(8),
-            ),
-            child: Text(
-              '${transaction['amount'] > 0 ? '+' : ''}\$${transaction['amount'].abs().toStringAsFixed(2)}',
-              style: TextStyle(
-                color: transaction['amount'] > 0
-                    ? const Color(0xFF34D399)
-                    : const Color(0xFFEF4444),
-                fontSize: 15,
-                fontWeight: FontWeight.w600,
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(context).pop(false),
+                child: const Text('Cancel'),
               ),
+              TextButton(
+                onPressed: () => Navigator.of(context).pop(true),
+                child: const Text('Delete'),
+              ),
+            ],
+          ),
+        );
+      },
+      onDismissed: (direction) {
+        if (expense.id != null) {
+          Provider.of<ExpenseProvider>(
+            context,
+            listen: false,
+          ).deleteExpense(expense.id!);
+        }
+      },
+      background: Container(
+        alignment: Alignment.centerRight,
+        padding: const EdgeInsets.only(right: 20),
+        color: Colors.red,
+        child: const Icon(Icons.delete, color: Colors.white),
+      ),
+      child: Container(
+        margin: const EdgeInsets.only(bottom: 10),
+        padding: const EdgeInsets.all(15),
+        decoration: BoxDecoration(
+          color: Colors.white.withOpacity(0.05),
+          borderRadius: BorderRadius.circular(15),
+          border: Border.all(color: Colors.white.withOpacity(0.1), width: 1),
+        ),
+        child: Row(
+          children: [
+            Container(
+              width: 45,
+              height: 45,
+              decoration: BoxDecoration(
+                color: categoryColor.withOpacity(0.2),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Icon(categoryIcon, color: categoryColor, size: 22),
+            ),
+            const SizedBox(width: 15),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    expense.title,
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 16,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    '${expense.category} • ${_formatDate(expense.createdAt)}',
+                    style: TextStyle(
+                      color: Colors.white.withOpacity(0.6),
+                      fontSize: 13,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+              decoration: BoxDecoration(
+                color: expense.amount > 0
+                    ? const Color(0xFF34D399).withOpacity(0.2)
+                    : const Color(0xFFEF4444).withOpacity(0.2),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Text(
+                '${expense.amount > 0 ? '+' : '-'}\${expense.amount.abs().toStringAsFixed(2)}',
+                style: TextStyle(
+                  color: expense.amount > 0
+                      ? const Color(0xFF34D399)
+                      : const Color(0xFFEF4444),
+                  fontSize: 15,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildLoadingState() {
+    return Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          const CircularProgressIndicator(
+            valueColor: AlwaysStoppedAnimation<Color>(Color(0xFF6366F1)),
+          ),
+          const SizedBox(height: 16),
+          Text(
+            'Loading transactions...',
+            style: TextStyle(
+              color: Colors.white.withOpacity(0.7),
+              fontSize: 16,
             ),
           ),
         ],
       ),
     );
+  }
+
+  Widget _buildErrorState(String error) {
+    return Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(
+            Icons.error_outline,
+            color: Colors.red.withOpacity(0.7),
+            size: 48,
+          ),
+          const SizedBox(height: 16),
+          Text(
+            'Error loading transactions',
+            style: TextStyle(
+              color: Colors.white.withOpacity(0.9),
+              fontSize: 18,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            error,
+            style: TextStyle(
+              color: Colors.white.withOpacity(0.7),
+              fontSize: 14,
+            ),
+            textAlign: TextAlign.center,
+          ),
+          const SizedBox(height: 16),
+          ElevatedButton(
+            onPressed: () {
+              Provider.of<ExpenseProvider>(
+                context,
+                listen: false,
+              ).refreshExpenses();
+            },
+            child: const Text('Retry'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildEmptyState() {
+    return Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(
+            Icons.receipt_long_outlined,
+            color: Colors.white.withOpacity(0.5),
+            size: 48,
+          ),
+          const SizedBox(height: 16),
+          Text(
+            'No transactions yet',
+            style: TextStyle(
+              color: Colors.white.withOpacity(0.9),
+              fontSize: 18,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            'Start by adding your first expense',
+            style: TextStyle(
+              color: Colors.white.withOpacity(0.7),
+              fontSize: 14,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  String _formatDate(DateTime? date) {
+    if (date == null) return 'Unknown';
+
+    final now = DateTime.now();
+    final difference = now.difference(date);
+
+    if (difference.inDays == 0) {
+      if (difference.inHours == 0) {
+        return '${difference.inMinutes}m ago';
+      }
+      return '${difference.inHours}h ago';
+    } else if (difference.inDays == 1) {
+      return '1 day ago';
+    } else if (difference.inDays < 7) {
+      return '${difference.inDays} days ago';
+    } else {
+      return '${(difference.inDays / 7).floor()} week${(difference.inDays / 7).floor() > 1 ? 's' : ''} ago';
+    }
   }
 
   Widget _buildGlassContainer({

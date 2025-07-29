@@ -1,7 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:provider/provider.dart';
 import 'dart:ui';
 import 'dart:math' as math;
+import '../providers/expense_provider.dart';
+import '../models/expense.dart';
 
 class AddExpensePage extends StatefulWidget {
   const AddExpensePage({super.key});
@@ -24,6 +27,7 @@ class _AddExpensePageState extends State<AddExpensePage>
 
   String _selectedCategory = 'Food';
   bool _isIncome = false;
+  bool _isLoading = false;
 
   final List<Map<String, dynamic>> _categories = [
     {
@@ -149,6 +153,7 @@ class _AddExpensePageState extends State<AddExpensePage>
               ],
             ),
           ),
+          if (_isLoading) _buildLoadingOverlay(),
         ],
       ),
     );
@@ -503,13 +508,15 @@ class _AddExpensePageState extends State<AddExpensePage>
       children: [
         Expanded(
           child: GestureDetector(
-            onTap: () => Navigator.pop(context),
+            onTap: _isLoading ? null : () => Navigator.pop(context),
             child: _buildGlassContainer(
-              child: const Center(
+              child: Center(
                 child: Text(
                   'Cancel',
                   style: TextStyle(
-                    color: Colors.white,
+                    color: _isLoading
+                        ? Colors.white.withOpacity(0.5)
+                        : Colors.white,
                     fontSize: 16,
                     fontWeight: FontWeight.w600,
                   ),
@@ -522,38 +529,90 @@ class _AddExpensePageState extends State<AddExpensePage>
         const SizedBox(width: 20),
         Expanded(
           child: GestureDetector(
-            onTap: _saveTransaction,
+            onTap: _isLoading ? null : _saveTransaction,
             child: Container(
               padding: const EdgeInsets.symmetric(vertical: 18),
               decoration: BoxDecoration(
                 borderRadius: BorderRadius.circular(20),
-                gradient: const LinearGradient(
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                  colors: [Color(0xFF6366F1), Color(0xFF8B5CF6)],
-                ),
-                boxShadow: [
-                  BoxShadow(
-                    color: const Color(0xFF6366F1).withOpacity(0.4),
-                    blurRadius: 20,
-                    offset: const Offset(0, 10),
-                  ),
-                ],
+                gradient: _isLoading
+                    ? LinearGradient(
+                        colors: [
+                          Colors.grey.withOpacity(0.6),
+                          Colors.grey.withOpacity(0.6),
+                        ],
+                      )
+                    : const LinearGradient(
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
+                        colors: [Color(0xFF6366F1), Color(0xFF8B5CF6)],
+                      ),
+                boxShadow: _isLoading
+                    ? []
+                    : [
+                        BoxShadow(
+                          color: const Color(0xFF6366F1).withOpacity(0.4),
+                          blurRadius: 20,
+                          offset: const Offset(0, 10),
+                        ),
+                      ],
               ),
-              child: const Center(
-                child: Text(
-                  'Save',
-                  style: TextStyle(
-                    color: Colors.white,
-                    fontSize: 16,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
+              child: Center(
+                child: _isLoading
+                    ? const SizedBox(
+                        width: 20,
+                        height: 20,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          valueColor: AlwaysStoppedAnimation<Color>(
+                            Colors.white,
+                          ),
+                        ),
+                      )
+                    : const Text(
+                        'Save',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 16,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
               ),
             ),
           ),
         ),
       ],
+    );
+  }
+
+  Widget _buildLoadingOverlay() {
+    return Container(
+      color: Colors.black.withOpacity(0.3),
+      child: Center(
+        child: Container(
+          padding: const EdgeInsets.all(20),
+          decoration: BoxDecoration(
+            color: Colors.white.withOpacity(0.1),
+            borderRadius: BorderRadius.circular(20),
+            border: Border.all(color: Colors.white.withOpacity(0.2)),
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const CircularProgressIndicator(
+                valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+              ),
+              const SizedBox(height: 16),
+              Text(
+                'Saving transaction...',
+                style: TextStyle(
+                  color: Colors.white.withOpacity(0.9),
+                  fontSize: 16,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 
@@ -597,7 +656,7 @@ class _AddExpensePageState extends State<AddExpensePage>
     );
   }
 
-  void _saveTransaction() {
+  void _saveTransaction() async {
     if (_amountController.text.isEmpty) {
       _showErrorSnackBar('Please enter an amount');
       return;
@@ -608,15 +667,52 @@ class _AddExpensePageState extends State<AddExpensePage>
       return;
     }
 
-    // Add haptic feedback
-    HapticFeedback.mediumImpact();
-
-    // Show success and navigate back
-    _showSuccessSnackBar('Transaction saved successfully!');
-
-    Future.delayed(const Duration(milliseconds: 500), () {
-      Navigator.pop(context);
+    setState(() {
+      _isLoading = true;
     });
+
+    try {
+      final amount = double.parse(_amountController.text);
+      final finalAmount = _isIncome ? amount : -amount;
+
+      final expense = Expense(
+        title: _descriptionController.text,
+        amount: finalAmount,
+        category: _selectedCategory,
+      );
+
+      final success = await Provider.of<ExpenseProvider>(
+        context,
+        listen: false,
+      ).addExpense(expense);
+
+      if (success) {
+        HapticFeedback.mediumImpact();
+        _showSuccessSnackBar('Transaction saved successfully!');
+
+        Future.delayed(const Duration(milliseconds: 500), () {
+          if (mounted) {
+            Navigator.pop(context);
+          }
+        });
+      } else {
+        final errorProvider = Provider.of<ExpenseProvider>(
+          context,
+          listen: false,
+        );
+        _showErrorSnackBar(
+          errorProvider.errorMessage ?? 'Failed to save transaction',
+        );
+      }
+    } catch (e) {
+      _showErrorSnackBar('Invalid amount entered');
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+        });
+      }
+    }
   }
 
   void _showErrorSnackBar(String message) {

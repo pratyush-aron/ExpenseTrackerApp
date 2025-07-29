@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:provider/provider.dart';
+import 'providers/expense_provider.dart';
 import 'screens/navigation_wrapper.dart';
 
 void main() {
@@ -20,25 +22,30 @@ class ExpenseTrackerApp extends StatelessWidget {
       ),
     );
 
-    return MaterialApp(
-      title: 'Expense Tracker',
-      debugShowCheckedModeBanner: false,
-      theme: ThemeData(
-        useMaterial3: true,
-        brightness: Brightness.dark,
-        fontFamily: 'Inter',
-        colorScheme: ColorScheme.fromSeed(
-          seedColor: const Color(0xFF6366F1),
+    return MultiProvider(
+      providers: [
+        ChangeNotifierProvider(create: (context) => ExpenseProvider()),
+      ],
+      child: MaterialApp(
+        title: 'Expense Tracker',
+        debugShowCheckedModeBanner: false,
+        theme: ThemeData(
+          useMaterial3: true,
           brightness: Brightness.dark,
+          fontFamily: 'Inter',
+          colorScheme: ColorScheme.fromSeed(
+            seedColor: const Color(0xFF6366F1),
+            brightness: Brightness.dark,
+          ),
+          pageTransitionsTheme: const PageTransitionsTheme(
+            builders: {
+              TargetPlatform.android: CupertinoPageTransitionsBuilder(),
+              TargetPlatform.iOS: CupertinoPageTransitionsBuilder(),
+            },
+          ),
         ),
-        pageTransitionsTheme: const PageTransitionsTheme(
-          builders: {
-            TargetPlatform.android: CupertinoPageTransitionsBuilder(),
-            TargetPlatform.iOS: CupertinoPageTransitionsBuilder(),
-          },
-        ),
+        home: const NavigationWrapper(),
       ),
-      home: const NavigationWrapper(),
     );
   }
 }
